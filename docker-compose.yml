@@ -1,0 +1,10 @@
+# Local stack: Floci (AWS emulator) + stripe-mock. Run `make up`.
+services:
+  floci:
+    image: floci/floci:latest
+    ports: ["4566:4566"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # lets Floci's ECS/Batch start real containers
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    ports: ["12111:12111", "12112:12112"]
