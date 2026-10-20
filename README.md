@@ -30,10 +30,15 @@ make bill          # 課金実行
 make retry reconcile
 ```
 
-## Floci 上に Terraform を適用
+## Terraform
 ```sh
-make tf-local      # provider エンドポイントを localhost:4566 に向ける
+make tf-plan                 # Floci(localhost:4566)に対する plan
+make tf-apply                # Floci に apply(自動承認)
+make tf-plan  TF_ENV=aws     # 実 AWS。変数は terraform/aws.tfvars から読む
+make tf-apply TF_ENV=aws     # 実 AWS に apply(確認プロンプトあり)
 ```
+`TF_ENV` ごとに同名の Terraform workspace を使うので、Floci と AWS の state は混ざらない。Terraform のバージョンは `.tool-versions`(asdf)で 1.11.2 に固定している。
+Floci は Batch ジョブ定義の `secrets` / `fargatePlatformConfiguration`、Scheduler、RDS のバックアップ保持期間を保持しないため、apply 後も `tf-plan` に差分が残る(実 AWS では出ない)。
 ECR に push するイメージは `docker build -t localhost:4566/... .` 等で用意する(Floci の ECR は `registry:2`)。
 
 ## stripe-mock の注意
@@ -42,8 +47,8 @@ stripe-mock は**ステートレス**で、レスポンスは固定値(PaymentIn
 
 ## 本番(AWS)
 ```sh
-cd terraform
-terraform apply -var 'vpc_id=vpc-...' -var 'subnet_ids=["subnet-..."]' -var 'security_group_ids=["sg-..."]'
+cp terraform/aws.tfvars.example terraform/aws.tfvars   # vpc_id / subnet_ids / security_group_ids を埋める
+make tf-apply TF_ENV=aws
 aws secretsmanager put-secret-value --secret-id credit-billing/stripe-api-key --secret-string sk_live_...
 aws batch submit-job --job-name credit-billing-migrate --job-queue credit-billing-queue --job-definition credit-billing-migrate
 ```
@@ -53,5 +58,5 @@ Aurora は `subnet_ids` に置かれ、`security_group_ids`(Fargate タスクの
 
 ## 検証状況
 - Floci の Aurora MySQL に対して `migrate` / `seed` / `bill`(再実行で全件 skip)/ `retry` / `reconcile` と store の結合テストを実行済み。
-- `terraform validate` と Floci への `plan` は通過。Aurora 部分(`aws_rds_cluster` + writer)は Floci に `apply` して接続・`migrate` まで確認済み。
+- `terraform validate` と Floci への `make tf-plan` / `make tf-apply`(全25リソース)は通過。Aurora 部分は Floci 上で接続・`migrate` まで確認済み。
 - 未検証: 実 AWS への `apply`、Floci 上での Batch/ECS ジョブ実行。Floci の Aurora は中身が素の MySQL 8.0 なので、フェイルオーバーや Aurora 固有の挙動はローカルでは確認できない。

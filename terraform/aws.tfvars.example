@@ -1,0 +1,5 @@
+# Copy to aws.tfvars for `make tf-plan TF_ENV=aws` / `make tf-apply TF_ENV=aws`.
+vpc_id             = "vpc-xxxxxxxx"
+subnet_ids         = ["subnet-xxxxxxxx", "subnet-yyyyyyyy"] # private, with NAT egress; >= 2 AZs for Aurora
+security_group_ids = ["sg-xxxxxxxx"]                        # attached to the Fargate tasks
+# db_min_acu = 0  # auto-pause when idle (Aurora MySQL 3.08+)

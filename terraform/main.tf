@@ -192,7 +192,7 @@ resource "aws_batch_compute_environment" "fargate" {
   compute_resources {
     type               = "FARGATE"
     max_vcpus          = 4
-    subnets            = var.subnet_ids
+    subnets            = var.use_floci ? ["subnet-floci"] : var.subnet_ids # SDK requires one; Floci ignores it
     security_group_ids = var.security_group_ids
   }
   depends_on = [aws_iam_role_policy_attachment.batch_service]
@@ -226,13 +226,14 @@ resource "aws_batch_job_definition" "job" {
     ]
     fargatePlatformConfiguration = { platformVersion = "LATEST" }
     networkConfiguration         = { assignPublicIp = "DISABLED" }
+    # Sorted by name: Batch returns them sorted, so any other order shows a permanent diff.
     environment = [
       { name = "DB_HOST", value = aws_rds_cluster.main.endpoint },
-      { name = "DB_PORT", value = tostring(aws_rds_cluster.main.port) },
       { name = "DB_NAME", value = var.db_name },
+      { name = "DB_PORT", value = tostring(aws_rds_cluster.main.port) },
       { name = "DB_USER", value = var.db_username },
-      { name = "STRIPE_API_BASE", value = var.stripe_api_base },
       { name = "MAX_ATTEMPTS", value = "4" },
+      { name = "STRIPE_API_BASE", value = var.stripe_api_base },
     ]
     secrets = [
       { name = "STRIPE_API_KEY", valueFrom = aws_secretsmanager_secret.stripe.arn },
