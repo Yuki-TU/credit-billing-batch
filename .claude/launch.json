@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "floci",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "floci"],
+      "port": 4566
+    },
+    {
+      "name": "stripe-mock",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "stripe-mock"],
+      "port": 12111
+    }
+  ]
+}
