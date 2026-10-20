@@ -16,14 +16,48 @@ variable "image" {
   type        = string
   default     = ""
 }
+variable "vpc_id" {
+  description = "VPC of subnet_ids (for the Aurora security group). Unused on Floci."
+  type        = string
+  default     = ""
+}
 variable "subnet_ids" {
-  description = "Private subnets for Fargate tasks (need egress to api.stripe.com via NAT)."
+  description = "Private subnets for Fargate tasks and Aurora (tasks need egress to api.stripe.com via NAT)."
   type        = list(string)
   default     = []
 }
 variable "security_group_ids" {
-  type    = list(string)
-  default = []
+  description = "Security groups of the Fargate tasks; Aurora allows 3306 from these."
+  type        = list(string)
+  default     = []
+}
+variable "db_engine_version" {
+  description = "Aurora MySQL version (3.x = MySQL 8.0). null = AWS default."
+  type        = string
+  default     = null
+}
+variable "db_name" {
+  type    = string
+  default = "billing"
+}
+variable "db_username" {
+  type    = string
+  default = "admin"
+}
+variable "db_min_acu" {
+  description = "Serverless v2 minimum ACU. 0 enables auto-pause (needs Aurora MySQL 3.08+; first connect after pause takes ~15s)."
+  type        = number
+  default     = 0.5
+}
+variable "db_max_acu" {
+  type    = number
+  default = 2
+}
+variable "local_db_password" {
+  description = "Master password used only on Floci (AWS uses an RDS-managed secret)."
+  type        = string
+  default     = "localpass123"
+  sensitive   = true
 }
 variable "stripe_api_base" {
   description = "Override Stripe base URL (stripe-mock). Empty in production."

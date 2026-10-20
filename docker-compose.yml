@@ -1,10 +1,12 @@
-# Local stack: Floci (AWS emulator) + stripe-mock. Run `make up`.
+# Local stack: Floci (AWS emulator, incl. Aurora MySQL) + stripe-mock. Run `make up db`.
 services:
   floci:
     image: floci/floci:latest
-    ports: ["4566:4566"]
+    ports:
+      - "4566:4566"
+      - "7001-7099:7001-7099"   # RDS proxy ports (Aurora MySQL cluster endpoints)
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock   # lets Floci's ECS/Batch start real containers
+      - /var/run/docker.sock:/var/run/docker.sock   # lets Floci's ECS/Batch/RDS start real containers
   stripe-mock:
     image: stripe/stripe-mock:latest
     ports: ["12111:12111", "12112:12112"]

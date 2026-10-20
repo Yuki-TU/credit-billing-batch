@@ -3,7 +3,8 @@
 //	batch bill [--period YYYY-MM]
 //	batch retry
 //	batch reconcile
-//	batch seed            (local dev only: inserts sample subscriptions)
+//	batch migrate         (creates tables; run once per deploy)
+//	batch seed            (local dev only: migrate + sample subscriptions)
 package main
 
 import (
@@ -16,9 +17,6 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
 	"github.com/Yuki-TU/credit-billing-batch/internal/jobs"
 	"github.com/Yuki-TU/credit-billing-batch/internal/payment"
@@ -34,7 +32,7 @@ func env(k, d string) string {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: batch <bill|retry|reconcile|seed> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: batch <bill|retry|reconcile|migrate|seed> [flags]")
 		os.Exit(2)
 	}
 	cmd := os.Args[1]
@@ -46,19 +44,27 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 
-	// AWS_ENDPOINT_URL (Floci) is honoured natively by the SDK.
-	awsCfg, err := config.LoadDefaultConfig(ctx)
+	// DB_PASSWORD is injected from Secrets Manager in AWS; locally it comes from the Makefile.
+	db, err := store.Open(ctx, env("DB_HOST", "127.0.0.1"), env("DB_PORT", "3306"),
+		env("DB_USER", "admin"), os.Getenv("DB_PASSWORD"), env("DB_NAME", "billing"))
 	if err != nil {
-		log.Error("aws config", "err", err)
+		log.Error("db", "err", err)
 		os.Exit(1)
 	}
-	st := store.New(dynamodb.NewFromConfig(awsCfg), env("SUBSCRIPTIONS_TABLE", "subscriptions"), env("CHARGES_TABLE", "charges"))
+	defer db.Close()
+	st := store.New(db)
 
-	if cmd == "seed" {
-		if err := st.EnsureTables(ctx); err != nil {
-			log.Error("ensure tables", "err", err)
+	if cmd == "migrate" || cmd == "seed" {
+		if err := st.Migrate(ctx); err != nil {
+			log.Error("migrate", "err", err)
 			os.Exit(1)
 		}
+		log.Info("schema up to date")
+	}
+	if cmd == "migrate" {
+		return
+	}
+	if cmd == "seed" {
 		for i, pm := range []string{"pm_card_visa", "pm_card_chargeCustomerFail", "pm_card_mastercard"} {
 			err = st.PutSubscription(ctx, store.Subscription{
 				CustomerID: "cus_seed_" + strconv.Itoa(i), PaymentMethodID: pm, Amount: 1000, Currency: "jpy", Active: true})
