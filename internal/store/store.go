@@ -19,6 +19,7 @@ const (
 	StatusFailed         Status = "FAILED"          // retryable
 	StatusRequiresAction Status = "REQUIRES_ACTION" // 3DS etc. needs the customer
 	StatusAbandoned      Status = "ABANDONED"       // retries exhausted
+	StatusUnknown        Status = "UNKNOWN"         // Stripe outcome unknown (5xx/no response); reconcile resolves it
 )
 
 type Subscription struct {
@@ -54,23 +55,52 @@ type Store struct{ db *sql.DB }
 
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
-// Open connects to MySQL and verifies the connection.
+// Connection settings sized for Aurora Serverless v2 auto-pause: resuming a paused
+// instance typically takes ~15s, and 30s or more after a day paused.
+var (
+	dialTimeout     = 30 * time.Second
+	connectAttempts = 5
+	connectBackoff  = 5 * time.Second // grows linearly: 5s, 10s, 15s, ...
+)
+
+// Open connects to MySQL and verifies the connection, retrying transient failures.
 func Open(ctx context.Context, host, port, user, password, dbName string) (*sql.DB, error) {
 	cfg := mysql.NewConfig()
 	cfg.Net, cfg.Addr = "tcp", host+":"+port
 	cfg.User, cfg.Passwd, cfg.DBName = user, password, dbName
 	cfg.TLSConfig = "preferred" // Aurora offers TLS; local MySQL may use a self-signed cert
+	cfg.Timeout = dialTimeout
 	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(4) // jobs are sequential; keep Aurora connections low
 	db.SetConnMaxLifetime(5 * time.Minute)
-	if err := db.PingContext(ctx); err != nil {
+	if err := retryTransient(ctx, connectAttempts, connectBackoff, func() error { return db.PingContext(ctx) }); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("connect %s: %w", cfg.Addr, err)
 	}
 	return db, nil
+}
+
+// retryTransient calls fn up to attempts times, waiting n*backoff after the n-th failure.
+// Errors returned by the MySQL server itself (e.g. access denied) are not retried.
+func retryTransient(ctx context.Context, attempts int, backoff time.Duration, fn func() error) error {
+	var err error
+	for n := 1; ; n++ {
+		if err = fn(); err == nil {
+			return nil
+		}
+		var me *mysql.MySQLError
+		if errors.As(err, &me) || n >= attempts {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
+		case <-time.After(time.Duration(n) * backoff):
+		}
+	}
 }
 
 func ChargeID(customerID, period string) string { return customerID + "#" + period }

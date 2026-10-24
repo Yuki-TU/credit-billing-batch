@@ -18,7 +18,7 @@ func TestStoreAgainstMySQL(t *testing.T) {
 	if err != nil {
 		t.Skipf("mysql not reachable: %v", err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { db.Close() }) // registered first so it runs after the row cleanup below
 	s := New(db)
 	if err := s.Migrate(ctx); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -26,7 +26,11 @@ func TestStoreAgainstMySQL(t *testing.T) {
 
 	cus := "cus_test_" + time.Now().Format("150405.000000")
 	id := ChargeID(cus, "2026-10")
-	t.Cleanup(func() { db.Exec(`DELETE FROM charges WHERE charge_id = ?`, id) })
+	t.Cleanup(func() {
+		if _, err := db.Exec(`DELETE FROM charges WHERE charge_id = ?`, id); err != nil {
+			t.Errorf("cleanup: %v", err)
+		}
+	})
 
 	c := Charge{ChargeID: id, CustomerID: cus, Period: "2026-10", PaymentMethodID: "pm_x", Amount: 1000, Currency: "jpy"}
 	if err := s.CreateCharge(ctx, c); err != nil {

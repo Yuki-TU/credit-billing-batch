@@ -17,7 +17,8 @@ func TestChargeAgainstStripeMock(t *testing.T) {
 		t.Skipf("stripe-mock not reachable: %v", err)
 	}
 	s := NewStripe("sk_test_123", base)
-	res := s.Charge(context.Background(), "cus_x", "pm_card_visa", 1000, "jpy", "k1")
+	res := s.Charge(context.Background(), ChargeRequest{ChargeID: "cus_x#2026-10", Attempt: 1, CustomerID: "cus_x",
+		PaymentMethodID: "pm_card_visa", Amount: 1000, Currency: "jpy", IdempotencyKey: "k1"})
 	if res.Err != nil {
 		t.Fatalf("charge: %v", res.Err)
 	}
@@ -27,6 +28,9 @@ func TestChargeAgainstStripeMock(t *testing.T) {
 	st, err := s.PaymentIntentStatus(context.Background(), res.PaymentIntentID)
 	if err != nil || st == "" {
 		t.Fatalf("status: %q %v", st, err)
+	}
+	if _, _, err := s.FindPaymentIntent(context.Background(), "cus_x", "cus_x#2026-10", 1, 0); err != nil {
+		t.Fatalf("find: %v", err)
 	}
 	t.Logf("pi=%s charge-status=%s get-status=%s", res.PaymentIntentID, res.Status, st)
 }
